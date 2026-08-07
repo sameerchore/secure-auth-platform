@@ -1,13 +1,17 @@
 /**
  * auth.test.js — Comprehensive test suite for the Secure Login System.
  *
+ * Uses server-side sessions (not JWT). Tests use Bearer token headers
+ * (the session ID) since Supertest doesn't natively support cookies
+ * across requests. The auth middleware accepts both cookies and Bearer.
+ *
  * Tests cover:
  *   1.  Registration (success + validation)
  *   2.  Duplicate registration rejection
  *   3.  Login with correct credentials
  *   4.  Login with wrong password (generic error)
  *   5.  Login with unknown email (same generic error)
- *   6.  Password hashing verification
+ *   6.  Passwords are hashed (bcrypt)
  *   7.  Protected endpoint rejects unauthenticated requests
  *   8.  /me returns current user only
  *   9.  /me cannot be manipulated to return another user
@@ -19,8 +23,7 @@
  *   15. Old session cannot access protected endpoints after logout
  *   16. Rate limiting (account lockout)
  *   17. Expired/revoked sessions fail
- *
- * Uses Jest + Supertest against the Express app with a real test database.
+ *   18. Cross-user security matrix
  */
 const request = require('supertest');
 const app     = require('../src/app');
@@ -48,16 +51,16 @@ beforeAll(async () => {
 
   // Clean test data
   await query("DELETE FROM login_attempts WHERE email LIKE 'test_%'");
-  await query("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')");
   await query("DELETE FROM files WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')");
+  await query("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')");
   await query("DELETE FROM users WHERE email LIKE 'test_%'");
 });
 
 afterAll(async () => {
   // Clean up test data
   await query("DELETE FROM login_attempts WHERE email LIKE 'test_%'");
-  await query("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')");
   await query("DELETE FROM files WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')");
+  await query("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'test_%')");
   await query("DELETE FROM users WHERE email LIKE 'test_%'");
   await pool.end();
 });
@@ -133,6 +136,13 @@ describe('POST /login', () => {
     expect(res.body.user).toHaveProperty('id');
     expect(res.body.user.email).toBe(USER_A.email);
     tokenA = res.body.token;
+
+    // Should also set an HttpOnly cookie
+    const cookies = res.headers['set-cookie'];
+    expect(cookies).toBeDefined();
+    const sidCookie = cookies.find(c => c.startsWith('sid='));
+    expect(sidCookie).toBeDefined();
+    expect(sidCookie).toMatch(/HttpOnly/i);
   });
 
   test('3b. Login User B', async () => {
@@ -176,12 +186,20 @@ describe('POST /login', () => {
     expect(res.body.error).not.toMatch(/not registered/i);
     expect(res.body.error).not.toMatch(/not found/i);
   });
+
+  test('Login with missing fields returns 400', async () => {
+    const res = await request(app)
+      .post('/login')
+      .send({ email: USER_A.email });
+
+    expect(res.status).toBe(400);
+  });
 });
 
 // ── 6. Password Hashing ──────────────────────────────────
 
 describe('Password security', () => {
-  test('6. Passwords are hashed (not stored in plaintext)', async () => {
+  test('6. Passwords are hashed with bcrypt (not stored in plaintext)', async () => {
     const result = await query(
       'SELECT password_hash FROM users WHERE email = $1',
       [USER_A.email]
@@ -217,7 +235,15 @@ describe('Authentication middleware', () => {
   test('7d. Invalid token is rejected', async () => {
     const res = await request(app)
       .get('/me')
-      .set('Authorization', 'Bearer invalid.token.here');
+      .set('Authorization', 'Bearer invalid-session-id-here');
+
+    expect(res.status).toBe(401);
+  });
+
+  test('7e. Malformed Authorization header is rejected', async () => {
+    const res = await request(app)
+      .get('/me')
+      .set('Authorization', 'NotBearer somevalue');
 
     expect(res.status).toBe(401);
   });
@@ -237,8 +263,7 @@ describe('GET /me', () => {
     expect(res.body).toHaveProperty('profile');
   });
 
-  test('9. Cannot be manipulated to return another user', async () => {
-    // Even if userId is supplied in query params, /me returns the authenticated user
+  test('9. Cannot be manipulated to return another user via query param', async () => {
     const res = await request(app)
       .get(`/me?userId=${userBId}`)
       .set('Authorization', `Bearer ${tokenA}`);
@@ -254,49 +279,65 @@ describe('GET /me', () => {
 // ── 10-13. File Isolation ─────────────────────────────────
 
 describe('File access and IDOR prevention', () => {
-  // First, seed files for each test user
+  // Seed files for each test user
   beforeAll(async () => {
-    // Create uploads dir if needed
     const uploadsDir = path.join(__dirname, '..', 'uploads');
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-    // Insert files for each user
-    for (const [userId, email, fileNum] of [[userAId, 'alice', 'A'], [userBId, 'bob', 'B'], [userCId, 'carol', 'C']]) {
-      const filename = `test_file_${fileNum}_${Date.now()}.txt`;
+    const usersAndLabels = [
+      [userAId, 'alice', 'A'],
+      [userBId, 'bob', 'B'],
+      [userCId, 'carol', 'C'],
+    ];
+
+    for (const [userId, name, label] of usersAndLabels) {
+      const filename = `test_file_${label}_${Date.now()}.txt`;
       const diskPath = path.join(uploadsDir, filename);
-      fs.writeFileSync(diskPath, `Test file for ${email}`);
+      const content = `Test file for ${name}`;
+      fs.writeFileSync(diskPath, content);
+      const stat = fs.statSync(diskPath);
 
       const result = await query(
         `INSERT INTO files (user_id, filename, original_filename, storage_path, mime_type, size)
          VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id`,
-        [userId, filename, `${email}_document.txt`, `uploads/${filename}`, 'text/plain', 100]
+        [userId, filename, `${name}_document.txt`, `uploads/${filename}`, 'text/plain', stat.size]
       );
 
-      if (fileNum === 'A') fileAId = result.rows[0].id;
-      if (fileNum === 'B') fileBId = result.rows[0].id;
-      if (fileNum === 'C') fileCId = result.rows[0].id;
+      if (label === 'A') fileAId = result.rows[0].id;
+      if (label === 'B') fileBId = result.rows[0].id;
+      if (label === 'C') fileCId = result.rows[0].id;
     }
   });
 
   test('10. /files returns only current user\'s files', async () => {
-    const resA = await request(app)
+    const res = await request(app)
       .get('/files')
       .set('Authorization', `Bearer ${tokenA}`);
 
-    expect(resA.status).toBe(200);
-    expect(resA.body.files).toBeDefined();
-    expect(Array.isArray(resA.body.files)).toBe(true);
+    expect(res.status).toBe(200);
+    expect(res.body.files).toBeDefined();
+    expect(Array.isArray(res.body.files)).toBe(true);
 
     // All returned files must belong to User A
-    for (const file of resA.body.files) {
+    for (const file of res.body.files) {
       expect(file.ownerId).toBe(userAId);
     }
 
-    // User B's files must NOT appear
-    const fileIds = resA.body.files.map(f => f.id);
+    // User B's and C's files must NOT appear
+    const fileIds = res.body.files.map(f => f.id);
     expect(fileIds).not.toContain(fileBId);
     expect(fileIds).not.toContain(fileCId);
+  });
+
+  test('User A can access their own file', async () => {
+    const res = await request(app)
+      .get(`/files/${fileAId}`)
+      .set('Authorization', `Bearer ${tokenA}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.file).toBeDefined();
+    expect(res.body.file.id).toBe(fileAId);
   });
 
   test('11. User A cannot access User B\'s file', async () => {
@@ -331,18 +372,16 @@ describe('File access and IDOR prevention', () => {
     expect(res.status).toBe(404);
   });
 
-  test('User A can access their own file', async () => {
+  test('User A can download their own file', async () => {
     const res = await request(app)
-      .get(`/files/${fileAId}`)
+      .get(`/files/${fileAId}/download`)
       .set('Authorization', `Bearer ${tokenA}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.file).toBeDefined();
-    expect(res.body.file.id).toBe(fileAId);
   });
 });
 
-// ── 14-15. Logout ─────────────────────────────────────────
+// ── 14-15. Logout and Session Invalidation ────────────────
 
 describe('Logout and session invalidation', () => {
   let logoutToken;
@@ -368,10 +407,19 @@ describe('Logout and session invalidation', () => {
       .set('Authorization', `Bearer ${logoutToken}`);
     expect(logoutRes.status).toBe(200);
     expect(logoutRes.body.message).toBe('Logged out');
+
+    // Should clear the cookie
+    const cookies = logoutRes.headers['set-cookie'];
+    if (cookies) {
+      const sidCookie = cookies.find(c => c.startsWith('sid='));
+      if (sidCookie) {
+        // Cookie should be cleared (empty value or expired)
+        expect(sidCookie).toMatch(/sid=;|Expires=Thu, 01 Jan 1970/i);
+      }
+    }
   });
 
   test('15. Old session cannot access protected endpoints after logout', async () => {
-    // Try to use the revoked token
     const res = await request(app)
       .get('/me')
       .set('Authorization', `Bearer ${logoutToken}`);
@@ -386,15 +434,22 @@ describe('Logout and session invalidation', () => {
 
     expect(res.status).toBe(401);
   });
+
+  test('15c. Old session cannot access individual file after logout', async () => {
+    const res = await request(app)
+      .get(`/files/${fileAId}`)
+      .set('Authorization', `Bearer ${logoutToken}`);
+
+    expect(res.status).toBe(401);
+  });
 });
 
-// ── 16. Rate Limiting ─────────────────────────────────────
+// ── 16. Rate Limiting / Account Lockout ───────────────────
 
 describe('Rate limiting / account lockout', () => {
   const LOCKOUT_EMAIL = 'test_lockout@example.com';
 
   beforeAll(async () => {
-    // Register a user for lockout testing
     await request(app)
       .post('/register')
       .send({ email: LOCKOUT_EMAIL, password: 'Password123!' });
@@ -402,18 +457,19 @@ describe('Rate limiting / account lockout', () => {
 
   afterAll(async () => {
     await query("DELETE FROM login_attempts WHERE email = $1", [LOCKOUT_EMAIL]);
+    await query("DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = $1)", [LOCKOUT_EMAIL]);
     await query("DELETE FROM users WHERE email = $1", [LOCKOUT_EMAIL]);
   });
 
   test('16. Repeated failed login attempts trigger lockout', async () => {
-    // Send multiple failed login attempts
+    // Send multiple failed login attempts (exceed LOCKOUT_THRESHOLD=5)
     for (let i = 0; i < 6; i++) {
       await request(app)
         .post('/login')
         .send({ email: LOCKOUT_EMAIL, password: 'WrongPassword!' });
     }
 
-    // Next attempt should be rate-limited
+    // Next attempt should be rate-limited (429)
     const res = await request(app)
       .post('/login')
       .send({ email: LOCKOUT_EMAIL, password: 'WrongPassword!' });
@@ -423,7 +479,7 @@ describe('Rate limiting / account lockout', () => {
   });
 });
 
-// ── 17. Session Expiry ────────────────────────────────────
+// ── 17. Session Lifecycle ─────────────────────────────────
 
 describe('Session lifecycle', () => {
   test('17. Manually revoked session is rejected', async () => {
@@ -431,15 +487,15 @@ describe('Session lifecycle', () => {
     const loginRes = await request(app)
       .post('/login')
       .send({ email: USER_A.email, password: USER_A.password });
-    const token = loginRes.body.token;
+    const sessionToken = loginRes.body.token;
 
     // Verify it works
     const meRes = await request(app)
       .get('/me')
-      .set('Authorization', `Bearer ${token}`);
+      .set('Authorization', `Bearer ${sessionToken}`);
     expect(meRes.status).toBe(200);
 
-    // Manually revoke all sessions for the user
+    // Manually revoke all sessions for this user via DB
     await query(
       "UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1",
       [userAId]
@@ -448,7 +504,7 @@ describe('Session lifecycle', () => {
     // Revoked session must be rejected
     const revokedRes = await request(app)
       .get('/me')
-      .set('Authorization', `Bearer ${token}`);
+      .set('Authorization', `Bearer ${sessionToken}`);
     expect(revokedRes.status).toBe(401);
   });
 });
@@ -457,7 +513,7 @@ describe('Session lifecycle', () => {
 
 describe('Security Test Matrix', () => {
   beforeAll(async () => {
-    // Re-login users since sessions might be revoked by previous tests
+    // Re-login all users (previous tests may have revoked sessions)
     const resA = await request(app)
       .post('/login')
       .send({ email: USER_A.email, password: USER_A.password });
@@ -490,6 +546,14 @@ describe('Security Test Matrix', () => {
     expect(res.body.email).toBe(USER_B.email);
   });
 
+  test('User C gets C\'s profile', async () => {
+    const res = await request(app)
+      .get('/me')
+      .set('Authorization', `Bearer ${tokenC}`);
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe(USER_C.email);
+  });
+
   test('User A cannot access User B\'s file', async () => {
     const res = await request(app)
       .get(`/files/${fileBId}`)
@@ -515,6 +579,13 @@ describe('Security Test Matrix', () => {
     const res = await request(app)
       .get(`/files/${fileAId}`)
       .set('Authorization', `Bearer ${tokenC}`);
+    expect([403, 404]).toContain(res.status);
+  });
+
+  test('User B cannot access User C\'s file', async () => {
+    const res = await request(app)
+      .get(`/files/${fileCId}`)
+      .set('Authorization', `Bearer ${tokenB}`);
     expect([403, 404]).toContain(res.status);
   });
 
@@ -547,5 +618,24 @@ describe('Security Test Matrix', () => {
       .send({ email: USER_A.email, password: 'WrongPass999!' });
     expect(res.status).toBe(401);
     expect(res.body.error).toBe('Invalid email or password');
+  });
+
+  test('Logout then reuse old credential → 401', async () => {
+    // Fresh login
+    const loginRes = await request(app)
+      .post('/login')
+      .send({ email: USER_B.email, password: USER_B.password });
+    const oldToken = loginRes.body.token;
+
+    // Logout
+    await request(app)
+      .post('/logout')
+      .set('Authorization', `Bearer ${oldToken}`);
+
+    // Reuse old credential
+    const res = await request(app)
+      .get('/me')
+      .set('Authorization', `Bearer ${oldToken}`);
+    expect(res.status).toBe(401);
   });
 });

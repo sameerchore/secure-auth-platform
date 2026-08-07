@@ -110,9 +110,10 @@ async function downloadFile(req, res, next) {
       return res.status(404).send('File not found on disk');
     }
 
+    const stat = fs.statSync(filePath);
     res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${file.original_filename}"`);
-    res.setHeader('Content-Length', file.size);
+    res.setHeader('Content-Length', stat.size);
 
     const stream = fs.createReadStream(filePath);
     stream.pipe(res);

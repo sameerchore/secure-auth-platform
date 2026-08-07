@@ -66,7 +66,7 @@ async function authenticate(req, res, next) {
     req.sessionId = sessionId;   // raw session ID (for logout revocation)
     next();
   } catch (err) {
-    logger.error('Auth middleware error: %s', err.message);
+    logger.debug('Auth middleware: session validation failed: %s', err.message);
     return res.status(401).json({ error: 'Not authenticated' });
   }
 }
