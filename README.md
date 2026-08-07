@@ -1,2 +1,1 @@
-# secure-auth-platform
-# secure-auth-platform
+Secure authentication and user file-access platform implemented with Node.js/Express + PostgreSQL and Appwrite, with server-side session management, authorization, rate limiting, and strict per-user data isolation.
