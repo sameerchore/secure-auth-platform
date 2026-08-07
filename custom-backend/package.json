@@ -1,0 +1,35 @@
+{
+  "name": "secure-auth-custom-backend",
+  "version": "1.0.0",
+  "description": "Secure Login System — Custom Backend (Node.js + Express + PostgreSQL)",
+  "main": "src/app.js",
+  "scripts": {
+    "dev": "node --watch src/app.js",
+    "start": "NODE_ENV=production node src/app.js",
+    "migrate": "node src/db/migrate.js",
+    "seed": "node scripts/seed.js",
+    "test": "NODE_ENV=test jest --forceExit --detectOpenHandles --verbose",
+    "test:security": "NODE_ENV=test jest --forceExit --detectOpenHandles --verbose --testPathPattern=security",
+    "setup": "npm run migrate && npm run seed",
+    "lint": "echo 'No linter configured — add eslint if desired'"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "pg": "^8.12.0",
+    "uuid": "^10.0.0",
+    "winston": "^3.14.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

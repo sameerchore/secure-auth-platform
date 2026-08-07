@@ -1,0 +1,8 @@
+# uploads/
+
+This directory stores user-uploaded files (and seeded sample files).
+
+Files are stored with safe UUID-based filenames, never with user-supplied names directly.
+Original filenames are preserved in the database `files.original_filename` column.
+
+This directory is **NOT committed to Git** — see `.gitignore`.
