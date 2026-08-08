@@ -12,75 +12,46 @@ Both implementations provide registration, login, logout, protected profile acce
 ## Quick Start
 
 ### Prerequisites
-
 - **Node.js** ≥ 18
-- **Docker** + Docker Compose (for PostgreSQL)
-- OR a local PostgreSQL instance
+- **Docker** (for the PostgreSQL database)
 
-### 1. Clone & Install
+### 1. Setup Database & Dependencies
 
 ```bash
-# Install custom backend dependencies
+# 1. Install dependencies
 cd custom-backend
 npm install
-```
+cd ..
 
-### 2. Start PostgreSQL
-
-**Option A — Docker (recommended):**
-```bash
-# From project root
+# 2. Start the database (runs on port 5433)
 docker compose up -d
-```
 
-**Option B — Local PostgreSQL:**
-```bash
-# Create database
-createdb secure_auth_db
-
-# Update DATABASE_URL in custom-backend/.env if needed
-```
-
-### 3. Configure Environment
-
-```bash
+# 3. Create tables and seed test users
 cd custom-backend
-cp .env.example .env
-# Edit .env if your PostgreSQL credentials differ
+npm run setup
+cd ..
 ```
 
-### 4. Run Migrations & Seed
+### 2. Run the Project (One-Click Start)
+
+We've provided a bash script to automatically start both the backend and frontend simultaneously:
 
 ```bash
-cd custom-backend
-npm run migrate    # Creates tables
-npm run seed       # Creates 3 test users with files
+# From the project root
+./start.sh
 ```
+*(This will start the Node API on port 3000 and the Web UI on port 5500.)*
 
-### 5. Start the Server
-
-```bash
-cd custom-backend
-npm run dev        # Starts on http://localhost:3000
-```
-
-### 6. Test with the Client
-
-Open `index.html` in a browser (serve it via a local HTTP server for best results):
-
-```bash
-# From project root — any simple HTTP server works
-npx -y serve .
-# OR
-python3 -m http.server 5500
-```
+### 3. Test with the Client
+ 
+Open **http://localhost:5500** in your web browser.
 
 1. Select **"Custom REST backend"** mode
 2. Set Base URL to `http://localhost:3000`
 3. Check **"Backend uses cookie sessions"**
-4. Use the quick-fill buttons to test with seeded users
+4. Use the quick-fill buttons at the top to test with the seeded users!
 
-### 7. Run Tests
+### 4. Run Tests (Optional)
 
 ```bash
 cd custom-backend
