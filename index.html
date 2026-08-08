@@ -107,7 +107,7 @@ function fillUser(email, password) {
 
 async function request(path, options = {}) {
   options.headers = options.headers || {};
-  if (!useCookies() && tokenVal()) {
+  if (tokenVal()) {
     options.headers['Authorization'] = 'Bearer ' + tokenVal();
   }
   if (useCookies()) {

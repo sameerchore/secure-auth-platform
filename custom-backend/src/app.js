@@ -33,7 +33,13 @@ app.use(helmet());
 // ── CORS ──────────────────────────────────────────────────
 // credentials: true is required for cross-origin cookie sending
 app.use(cors({
-  origin: env.CORS_ORIGIN,
+  origin: (origin, callback) => {
+    if (!origin || env.NODE_ENV !== 'production' || env.CORS_ORIGIN.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],

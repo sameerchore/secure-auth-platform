@@ -43,4 +43,12 @@ function passwordPolicyErrors(password) {
   return errors;
 }
 
-module.exports = { isValidEmail, isValidPassword, passwordPolicyErrors };
+/**
+ * Validate UUID format (v4 or standard 36-char hex UUID).
+ */
+function isValidUuid(uuid) {
+  if (typeof uuid !== 'string') return false;
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(uuid);
+}
+
+module.exports = { isValidEmail, isValidPassword, passwordPolicyErrors, isValidUuid };

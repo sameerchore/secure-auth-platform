@@ -10,6 +10,8 @@ const fs   = require('fs');
 const fileService = require('../services/file.service');
 const logger = require('../utils/logger');
 
+const { isValidUuid } = require('../utils/validators');
+
 /**
  * GET /files
  * Returns ONLY files belonging to the authenticated user.
@@ -44,6 +46,10 @@ async function getFile(req, res, next) {
   try {
     const fileId = req.params.id;
     const userId = req.user.id;
+
+    if (!isValidUuid(fileId)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
 
     // First try to get the file with ownership check
     const file = await fileService.getFileByIdAndUser(fileId, userId);
@@ -83,6 +89,10 @@ async function downloadFile(req, res, next) {
   try {
     const fileId = req.params.id;
     const userId = req.user.id;
+
+    if (!isValidUuid(fileId)) {
+      return res.status(404).send('File not found');
+    }
 
     const file = await fileService.getFileByIdAndUser(fileId, userId);
 
