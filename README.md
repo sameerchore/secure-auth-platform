@@ -17,7 +17,7 @@ chmod +x start.sh   # only needed once
 ./start.sh
 ```
 
-The script checks for Docker, Node/npm, and Python 3; starts PostgreSQL with Docker Compose; runs the custom migration and seed commands; starts the API on `http://localhost:3000`; and serves the test client on `http://localhost:5500`. Press `Ctrl+C` to stop the API and frontend. The PostgreSQL volume remains available for later runs.
+The script checks for Docker, Node/npm, and Python 3; starts PostgreSQL with Docker Compose; runs the custom migration and seed commands; runs the Appwrite setup and seed scripts (if configured); starts the API on `http://localhost:3000`; and serves the test client on `http://localhost:5500`. Press `Ctrl+C` to stop the API and frontend. The PostgreSQL volume remains available for later runs.
 
 ### Manual Custom Backend Setup
 
@@ -45,7 +45,7 @@ Open `http://localhost:5500`. To stop PostgreSQL later, run `docker compose down
 
 ### Appwrite Setup
 
-Appwrite is a separately configured cloud implementation and is not started by `./start.sh`.
+Appwrite is a separately configured cloud implementation, but its setup and seed scripts are now **automatically run by `./start.sh`** if it is configured.
 
 1. Create an Appwrite project and a server API key with the scopes required by the setup scripts.
 2. Configure its environment:

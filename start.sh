@@ -101,8 +101,23 @@ if [[ "$database_ready" != true ]]; then
 	exit 1
 fi
 
-echo "Applying database schema and seed data..."
+echo "Applying custom backend database schema and seed data..."
 (cd "$ROOT_DIR/custom-backend" && npm run setup)
+
+echo "Setting up Appwrite (if configured)..."
+if [[ -f "$ROOT_DIR/appwrite/.env" ]]; then
+	(
+		cd "$ROOT_DIR/appwrite"
+		echo "Installing Appwrite dependencies..."
+		npm install >/dev/null 2>&1
+		echo "Running Appwrite setup and seed..."
+		npm run setup
+		npm run seed
+	)
+else
+	echo "  ⓘ Skipping Appwrite setup: appwrite/.env not found."
+	echo "    (Copy appwrite/.env.example to appwrite/.env and configure it to enable Appwrite)"
+fi
 
 echo "Starting backend API on port 3000..."
 if curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1; then
