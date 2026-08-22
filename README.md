@@ -1,24 +1,5 @@
 # Secure Auth Platform
 
-## Quick Start
-
-The repository contains two clearly separated implementations:
-
-- `custom-backend/`: Node.js/Express REST API with PostgreSQL and database-backed sessions.
-- `appwrite/`: Appwrite setup and seed scripts plus the Appwrite web adapter.
-
-### Shortcut: `./start.sh`   
-Run this ./start.sh in osdag folder terminal for easy setup
-
-For the custom backend, the shortest path from a fresh checkout is:
-
-```bash
-chmod +x start.sh   # only needed once
-./start.sh
-```
-
-The script checks for Docker, Node/npm, and Python 3; starts PostgreSQL with Docker Compose; runs the custom migration and seed commands; runs the Appwrite setup and seed scripts (if configured); starts the API on `http://localhost:3000`; and serves the test client on `http://localhost:5500`. Press `Ctrl+C` to stop the API and frontend. The PostgreSQL volume remains available for later runs.
-
 ### Manual Custom Backend Setup
 
 Prerequisites: Docker with Compose, Node.js 18+, npm, and Python 3.
@@ -63,6 +44,20 @@ Appwrite is a separately configured cloud implementation, but its setup and seed
   npm run setup
   npm run seed
   ```
+## Quick Start
+
+The repository contains two clearly separated implementations:
+
+- `custom-backend/`: Node.js/Express REST API with PostgreSQL and database-backed sessions.
+- `appwrite/`: Appwrite setup and seed scripts plus the Appwrite web adapter.
+
+### Shortcut: `./start.sh`   
+Run this ./start.sh in osdag folder terminal for easy setup
+
+
+The script checks for Docker, Node/npm, and Python 3; starts PostgreSQL with Docker Compose; runs the custom migration and seed commands; runs the Appwrite setup and seed scripts (if configured); starts the API on `http://localhost:3000`; and serves the test client on `http://localhost:5500`. Press `Ctrl+C` to stop the API and frontend. The PostgreSQL volume remains available for later runs.
+
+##
 
 4. Serve the root test client (`python3 -m http.server 5500`), enable the Appwrite SDK and `appwrite/web/appwrite-adapter.js` script tags in `index.html`, select **Appwrite**, and enter the configured resource IDs. Never expose `APPWRITE_API_KEY` in browser code.
 
