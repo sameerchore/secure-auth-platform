@@ -1,0 +1,4 @@
+Sample file: project_notes.txt
+Owner: bob@example.com
+Type: text/plain
+This is a seeded sample file for testing purposes.

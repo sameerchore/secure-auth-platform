@@ -7,7 +7,8 @@ The repository contains two clearly separated implementations:
 - `custom-backend/`: Node.js/Express REST API with PostgreSQL and database-backed sessions.
 - `appwrite/`: Appwrite setup and seed scripts plus the Appwrite web adapter.
 
-### Shortcut: `./start.sh`
+### Shortcut: `./start.sh`   
+Run this ./start.sh in osdag folder terminal for easy setup
 
 For the custom backend, the shortest path from a fresh checkout is:
 
