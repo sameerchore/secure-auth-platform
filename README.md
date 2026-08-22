@@ -1,5 +1,104 @@
 # Secure Auth Platform
 
+## Quick Start
+
+The repository contains two clearly separated implementations:
+
+- `custom-backend/`: Node.js/Express REST API with PostgreSQL and database-backed sessions.
+- `appwrite/`: Appwrite setup and seed scripts plus the Appwrite web adapter.
+
+### Shortcut: `./start.sh`
+
+For the custom backend, the shortest path from a fresh checkout is:
+
+```bash
+chmod +x start.sh   # only needed once
+./start.sh
+```
+
+The script checks for Docker, Node/npm, and Python 3; starts PostgreSQL with Docker Compose; runs the custom migration and seed commands; starts the API on `http://localhost:3000`; and serves the test client on `http://localhost:5500`. Press `Ctrl+C` to stop the API and frontend. The PostgreSQL volume remains available for later runs.
+
+### Manual Custom Backend Setup
+
+Prerequisites: Docker with Compose, Node.js 18+, npm, and Python 3.
+
+```bash
+cp custom-backend/.env.example custom-backend/.env
+cd custom-backend
+npm install
+cd ..
+docker compose up -d
+cd custom-backend
+npm run setup                 # migrate schema and seed 3 users plus 6 files
+npm run dev                  # API at http://localhost:3000
+```
+
+In a second terminal, serve the test client:
+
+```bash
+cd /path/to/osdag
+python3 -m http.server 5500
+```
+
+Open `http://localhost:5500`. To stop PostgreSQL later, run `docker compose down` from the repository root. The custom seed is repeatable and clears/recreates the development users and files; do not run it against production data.
+
+### Appwrite Setup
+
+Appwrite is a separately configured cloud implementation and is not started by `./start.sh`.
+
+1. Create an Appwrite project and a server API key with the scopes required by the setup scripts.
+2. Configure its environment:
+
+  ```bash
+  cp appwrite/.env.example appwrite/.env
+  # Edit appwrite/.env with the endpoint, project ID, API key, database, collection, and bucket IDs.
+  ```
+
+3. Install and initialize Appwrite resources:
+
+  ```bash
+  cd appwrite
+  npm install
+  npm run setup
+  npm run seed
+  ```
+
+4. Serve the root test client (`python3 -m http.server 5500`), enable the Appwrite SDK and `appwrite/web/appwrite-adapter.js` script tags in `index.html`, select **Appwrite**, and enter the configured resource IDs. Never expose `APPWRITE_API_KEY` in browser code.
+
+### Seeded Test Users and Files
+
+Both implementations use these development credentials:
+
+| Email | Password | Seeded files |
+|---|---|---|
+| `alice@example.com` | `Password123!` | `resume_alice.pdf`, `profile_photo.jpg` |
+| `bob@example.com` | `Password123!` | `project_notes.txt`, `invoice_march.pdf` |
+| `carol@example.com` | `Password123!` | `test_plan.docx`, `vacation.png` |
+
+The custom seed writes the six sample files to `custom-backend/uploads/` and inserts their metadata into PostgreSQL. Run `cd custom-backend && npm run seed` after the database is available. The Appwrite seed creates the same three accounts, uploads sample files to the configured bucket, and creates their metadata documents; run `cd appwrite && npm run seed` after `npm run setup`. The test client has quick-fill buttons for all three users.
+
+## Authentication and Authorization Decisions
+
+### Why Sessions Instead of JWTs?
+
+The custom implementation uses opaque, database-backed sessions rather than JWTs. A session can be revoked immediately by changing one database row, which gives logout and account compromise response strong semantics. The session ID is random, stored only as a SHA-256 hash in PostgreSQL, and sent to the browser in an `HttpOnly`, `SameSite=Lax` cookie. JWTs are useful for independently verifiable, distributed services, but a stolen JWT normally remains valid until expiry; immediate revocation requires a blocklist or short-lived-token and refresh-token design.
+
+### Logout Under the Hood
+
+Custom logout hashes the session cookie value, updates the matching `sessions` row with `revoked_at = NOW()`, and clears the cookie. Subsequent protected requests fail session validation even if an old cookie was copied. Appwrite logout calls `deleteSession('current')`, which revokes the current Appwrite session, and the adapter clears its client-side session state.
+
+### User Data Isolation
+
+The custom backend derives the authenticated user ID only from the validated session. Protected file queries include the owner predicate (`user_id = authenticated user ID`) in the SQL query, and stored file paths are resolved only after that ownership check. This prevents a caller from changing a file ID to access another user's file. Appwrite uses `documentSecurity: true`, no broad collection permissions, and per-document and per-storage-file permissions for `Role.user(ownerId)`; Appwrite enforces those checks server-side rather than relying on frontend filtering.
+
+### Appwrite: Automatic vs Configured
+
+Appwrite automatically provides password hashing, account creation, session cookies, session deletion, email uniqueness, and platform rate limiting. This repository configures the database, file metadata collection and attributes, owner index, storage bucket, file size/type limits, document security, file security, per-user permissions, and adapter mapping. The full Appwrite details are also documented in [appwrite/README.md](appwrite/README.md).
+
+## Improvements Given More Time
+
+I would add email verification and password reset flows, CSRF tokens for deployments requiring cross-site cookie use, real upload validation and object storage lifecycle handling, Redis-backed session/rate-limit storage for multiple API instances, structured end-to-end tests for both implementations, and a production deployment guide with HTTPS and secret management. I would also make the Appwrite browser integration a separate bundled client instead of requiring manual script-tag changes in the test page.
+
 ## 1. Project Overview
 **What the project is:** A complete, highly secure authentication platform and file-sharing API. It implements user registration, login, profile management, and protected file access.
 **What problem it solves:** It provides a robust, production-ready solution to common security vulnerabilities like Session Hijacking, Cross-Site Scripting (XSS), Cross-Site Request Forgery (CSRF), and Insecure Direct Object References (IDOR).
@@ -203,114 +302,10 @@ secure-auth-platform/
 
 ---
 
-## 17. Interview Preparation: How to Explain This Project
-
-**30-Second Explanation:**
-"I built a secure authentication platform using Node.js, Express, and PostgreSQL. It features registration, login, and protected file access. I focused heavily on security, implementing server-side session management to allow instant revocation, storing session IDs in HttpOnly cookies to prevent XSS, and strictly enforcing database-level ownership checks to prevent IDOR vulnerabilities."
-
-**1-Minute Explanation:**
-"This project is a REST API built with Node, Express, and PostgreSQL that provides secure authentication and file access. Instead of using standard JWTs, I implemented stateful server-side sessions mapped to a PostgreSQL database. This allows for absolute session control, meaning when a user logs out, their session is instantly revoked at the database level. I also secured the application against common OWASP vulnerabilities. I prevented SQL injection using parameterized queries, prevented XSS using HttpOnly cookies, and prevented IDOR by ensuring every database query explicitly checks if the authenticated user owns the resource they are requesting."
-
-**2-Minute Technical Explanation:**
-"I developed a secure authentication and authorization backend using Node.js and PostgreSQL, architected with a strict separation of concerns—Routes, Controllers, and Services. 
-For authentication, passwords are mathematically hashed with bcrypt. Upon login, I generate a cryptographically secure random session ID, hash it using SHA-256, and store it in PostgreSQL, while returning the raw ID to the client via an HttpOnly, SameSite cookie. This mitigates XSS and CSRF while protecting the database if it’s ever compromised.
-For authorization, I built custom middleware that validates the cookie against the database on protected routes, attaching the verified user object to the request. In the Service layer, I prevented Insecure Direct Object References (IDOR) by hardcoding ownership checks directly into the SQL queries—e.g., `WHERE file_id = $1 AND user_id = $2`. 
-To ensure reliability, I implemented IP and account-based rate limiting to thwart brute-force attacks, configured Helmet for security headers, and wrote automated integration tests using Jest and Supertest to validate both the happy paths and the security boundaries."
-
----
-
-## 18. Interview Questions & Answers
-
-**1. Why did you choose this tech stack?**
-*Answer:* I chose Node.js and Express for their lightweight, non-blocking nature which handles I/O operations (like database queries) efficiently. I chose PostgreSQL because authentication involves highly relational data (Users own Sessions, Users own Files), and foreign key constraints enforce strict data integrity.
-
-**2. Explain your architecture.**
-*Answer:* I used a 3-layer architecture. Requests hit the Express Router, which passes them to Controllers. Controllers handle HTTP parsing and validation, then pass data to Services. Services contain the core business logic and execute parameterized SQL queries against the PostgreSQL database. This separation makes unit testing incredibly straightforward.
-
-**3. Why did you choose Server-Side Sessions over JWTs?**
-*Answer:* The core requirement was security and the ability to instantly revoke a session (e.g., upon logout). JWTs are stateless and cannot be revoked without implementing a complex Redis blocklist. DB-backed sessions let me instantly lock an account by setting `revoked_at = NOW()`.
-
-**4. How does data flow through the application during a file request?**
-*Answer:* The browser sends a GET request with an HttpOnly cookie. The Auth Middleware extracts the session ID, validates it against the DB, and attaches the user ID to the request. The Controller takes the requested file ID and calls the Service. The Service executes a SQL query fetching the file *only* if the file ID and user ID match. The result is returned to the client.
-
-**5. How did you handle errors?**
-*Answer:* I implemented a centralized Express error-handling middleware. If a service throws an error (e.g., "File not found"), the controller passes it to `next(err)`. The global handler catches it, logs it (hiding stack traces in production), and sends a standardized JSON response to the client.
-
-**6. What was your biggest technical challenge?**
-*Answer:* Configuring CORS properly with cookies. I learned that you cannot use a wildcard `*` for the origin if you want to send cookies; you must specify the exact origin and set `credentials: true` on both the backend CORS config and the frontend `fetch` request.
-
-**7. How did you optimize performance?**
-*Answer:* Because the `sessions` table is queried on every single protected request, I placed a database index on the `token_hash` column. This turns a slow sequential scan into an `O(log N)` index lookup.
-
-**8. What security measures did you implement?**
-*Answer:* bcrypt for passwords, parameterized SQL for injection prevention, HttpOnly cookies for XSS protection, SameSite attributes for CSRF mitigation, IDOR checks in SQL, and rate limiting to prevent brute forcing.
-
-**9. Explain the most difficult part of the code to write.**
-*Answer:* The authentication middleware and session generation. It required generating a secure token, hashing it for DB storage (in case the DB leaks), sending the unhashed version to the client in a secure cookie, and writing the logic to correlate them cleanly on subsequent requests.
-
-**10. What happens when something fails?**
-*Answer:* For unexpected server errors, the system catches the exception, logs it securely (without exposing sensitive tokens or DB credentials), and returns a generic 500 error to the client to avoid leaking infrastructure details.
-
-**11. What would you change if the application had 1 million users?**
-*Answer:* Querying PostgreSQL on every single API request to validate a session would create a bottleneck. I would introduce Redis as an in-memory caching layer for the `sessions` table to achieve sub-millisecond session validation.
-
-**12. What would you improve if you had more time?**
-*Answer:* I would implement a refresh-token rotation system or sliding session expirations. I would also add email verification during registration and a secure password reset flow.
-
-**13. What alternatives did you consider for rate limiting?**
-*Answer:* I considered using Redis for rate limiting, but to keep the architecture simple and dependency-free for this iteration, I used `express-rate-limit` for IP tracking in memory, and the PostgreSQL database for tracking specific account login failures.
-
-**14. How did you prevent SQL Injection?**
-*Answer:* By exclusively using the `pg` library's parameterized queries (e.g., `query('SELECT * FROM users WHERE email = $1', [email])`). I never concatenated user input into SQL strings.
-
-**15. How do you prevent Insecure Direct Object References (IDOR)?**
-*Answer:* I never trust user input regarding ownership. Whenever a user requests a resource by ID, the SQL query explicitly includes `AND user_id = $2`, using the user ID derived securely from their session, not from the request body.
-
-**16. Why hash session tokens in the database?**
-*Answer:* If an attacker steals a backup of the PostgreSQL database, they would have the active session IDs and could hijack user accounts. By storing a SHA-256 hash of the session ID, the stolen database becomes useless for session hijacking.
-
-**17. What is CORS and how did you configure it?**
-*Answer:* Cross-Origin Resource Sharing is a browser security mechanism. Since my frontend runs on port 5500 and backend on 3000, they are different origins. I configured the backend to explicitly allow requests from `http://localhost:5500` and permitted credentials.
-
-**18. What does Helmet.js do?**
-*Answer:* It's a collection of middleware that sets secure HTTP response headers, such as `X-Content-Type-Options: nosniff` (prevents MIME sniffing) and `Strict-Transport-Security` (enforces HTTPS).
-
-**19. How do you ensure environment variables aren't leaked?**
-*Answer:* I used the `dotenv` package to load variables from a `.env` file, which is strictly included in my `.gitignore`. I provided a `.env.example` file with dummy values for other developers.
-
-**20. Explain the difference between Authentication and Authorization in your app.**
-*Answer:* Authentication proves *who* the user is (verifying email/password and issuing a session). Authorization determines *what* they can do (validating they actually own the file they are trying to download).
-
----
-
-## 19. Important Concepts I Must Know (Interview Checklist)
-- [ ] **Stateful vs Stateless Auth:** Know the pros/cons of Session Cookies vs JWTs.
-- [ ] **XSS (Cross-Site Scripting):** Understand how it works and how `HttpOnly` stops it.
-- [ ] **CSRF (Cross-Site Request Forgery):** Understand it and how `SameSite` cookies mitigate it.
-- [ ] **SQL Injection:** Know what it looks like and how parameterization solves it.
-- [ ] **IDOR (Insecure Direct Object Reference):** Know how to explain preventing it via backend ownership checks.
-- [ ] **Hashing vs Encryption:** Know why we hash passwords (one-way) instead of encrypting them (two-way).
-- [ ] **CORS:** Be able to explain Origins and Preflight (`OPTIONS`) requests.
-- [ ] **Database Indexing:** Understand how a B-Tree index speeds up lookups on tables like `sessions`.
-
----
-
-## 20. Future Improvements
+## 17. Future Improvements
 - **Redis Integration:** Caching session data in Redis for faster, scalable auth checks.
 - **File Upload Service:** Implementing `multer` to allow users to actually upload files to an S3 bucket instead of using seeded data.
 - **Refresh Tokens:** If moving to a mobile app, implementing a short-lived access token / long-lived refresh token architecture.
 - **OAuth Integration:** Adding "Login with Google/GitHub" functionality.
 
 ---
-
-### Final Interview Cheat Sheet
-1. **The Core Stack:** Node.js, Express, PostgreSQL.
-2. **The Core Feature:** Highly secure, DB-backed session authentication with true server-side logout.
-3. **Password Security:** `bcrypt`, cost factor 12.
-4. **Token Security:** Hashed in DB, stored in client via `HttpOnly`, `SameSite` cookies.
-5. **IDOR Prevention:** Always append `AND user_id = req.user.id` to database queries.
-6. **SQLi Prevention:** Always use parameterized queries (`$1, $2`).
-7. **XSS Prevention:** No `localStorage` for sensitive tokens.
-8. **Rate Limiting:** IP-level for DDoS, Account-level for brute-force.
-9. **Architecture:** Separation of concerns (Routes -> Controllers -> Services).
-10. **Scalability consideration:** Database indexes on tokens/emails, prepare to use Redis for sessions.
