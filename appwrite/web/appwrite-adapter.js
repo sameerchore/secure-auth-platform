@@ -114,8 +114,8 @@
       });
     } catch (err) {
       console.error('[appwrite-adapter] Login error:', err);
-      // Generic error — never reveal whether email exists
-      return json(401, { error: 'Invalid email or password' });
+      // Return the actual error message for debugging purposes
+      return json(401, { error: err.message || 'Invalid email or password' });
     }
   }
 

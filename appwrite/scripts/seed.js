@@ -14,7 +14,8 @@
  * or store the raw password server-side.
  */
 
-const { Client, Users, Databases, Storage, Permission, Role, ID, InputFile } = require('node-appwrite');
+const { Client, Users, Databases, Storage, Permission, Role, ID, Query } = require('node-appwrite');
+const { InputFile } = require('node-appwrite/file');
 const path = require('path');
 const fs   = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
@@ -86,7 +87,7 @@ async function seed() {
     } catch (err) {
       if (err.code === 409) {
         // User already exists — find them
-        const userList = await users.list([`email=${userData.email}`]);
+        const userList = await users.list([Query.equal('email', [userData.email])]);
         if (userList.users.length > 0) {
           userId = userList.users[0].$id;
           console.log(`ⓘ User already exists: ${userData.email} (${userId})`);

@@ -34,9 +34,9 @@
 
 <fieldset>
   <legend>Appwrite settings (only used in "Appwrite" mode)</legend>
-  <label>Endpoint <input id="awEndpoint" value="https://cloud.appwrite.io/v1" size="40"></label>
-  <label>Project ID <input id="awProjectId" value="YOUR_PROJECT_ID" size="30"></label>
-  <label>Database ID <input id="awDatabaseId" value="YOUR_DATABASE_ID" size="30"></label>
+  <label>Endpoint <input id="awEndpoint" value="https://nyc.cloud.appwrite.io/v1" size="40"></label>
+  <label>Project ID <input id="awProjectId" value="6a8997e300346ab228f1" size="30"></label>
+  <label>Database ID <input id="awDatabaseId" value="secure_auth_db" size="30"></label>
   <label>Files collection ID <input id="awFilesCollectionId" value="files" size="30"></label>
   <label>Storage bucket ID <input id="awBucketId" value="user-files" size="30"></label>
   <p>These map to resources you create yourself in the Appwrite console — see README for the exact setup (attributes, permissions, indexes).</p>
@@ -85,11 +85,9 @@
 <pre id="output">(responses will show up here)</pre>
 
 <script src="mock-api.js"></script>
-<!-- Appwrite Web SDK & adapter (Uncomment or include these when implementing the Appwrite backend mode) -->
-<!--
+<!-- Appwrite Web SDK & adapter -->
 <script src="https://cdn.jsdelivr.net/npm/appwrite@14.0.0"></script>
 <script src="appwrite/web/appwrite-adapter.js"></script>
--->
 <script>
 function base() { return document.getElementById('baseUrl').value.replace(/\/$/, ''); }
 function useCookies() { return document.getElementById('useCookies').checked; }

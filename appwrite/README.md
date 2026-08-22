@@ -111,3 +111,17 @@ Each uploaded file has the same permission structure:
 - The adapter uses the Appwrite Web SDK, which authenticates via secure cookies
 - Document-level security (`documentSecurity: true`) ensures server-enforced isolation
 - No collection-level read permissions — users can only access their own documents
+
+## Gotchas & Troubleshooting
+
+When testing the Appwrite implementation locally from `http://localhost:5500`, you might encounter a few quirks related to how Appwrite's security model interacts with your browser:
+
+### 1. "Invalid email or password" immediately after Registering
+If you register a new account and attempt to log in immediately, you might get a `401 Unauthorized` error (e.g., `User missing scope`). 
+**Why?** Browsers like Chrome (Incognito), Safari, and Brave block **Third-Party Cookies** by default. Because you are on `localhost` but hitting an Appwrite Cloud endpoint (`nyc.cloud.appwrite.io`), your browser drops the session cookie.
+**Fix:** Enable third-party cookies for `localhost` in your browser settings, or use a standard browser window (not incognito) to test the application.
+
+### 2. Registration works, but Login fails (Session already active)
+If you are logged into an account (e.g., `alice@example.com`), then register a *new* account (`dave@example.com`), and attempt to log in to `dave`, the login will fail.
+**Why?** Appwrite has a strict security constraint: **"Creation of a session is prohibited when a session is active."** Registration does not automatically log you in, and you cannot log in to a new account while still authenticated as an old one.
+**Fix:** Always click **Logout** to clear your active session before attempting to log in to a different account.

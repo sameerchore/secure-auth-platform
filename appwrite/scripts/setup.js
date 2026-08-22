@@ -39,11 +39,20 @@ async function setup() {
 
   console.log('Creating database...');
   try {
-    await databases.create(APPWRITE_DATABASE_ID, 'Secure Auth DB');
-    console.log('  ✓ Database created');
+    await databases.get(APPWRITE_DATABASE_ID);
+    console.log('  ⓘ Database already exists');
   } catch (err) {
-    if (err.code === 409) {
-      console.log('  ⓘ Database already exists');
+    if (err.code === 404 || err.code === 403) {
+      try {
+        await databases.create(APPWRITE_DATABASE_ID, 'Secure Auth DB');
+        console.log('  ✓ Database created');
+      } catch (createErr) {
+        if (createErr.code === 409) {
+          console.log('  ⓘ Database already exists');
+        } else {
+          throw createErr;
+        }
+      }
     } else {
       throw err;
     }
@@ -124,22 +133,30 @@ async function setup() {
 
   console.log('Creating storage bucket...');
   try {
-    await storage.createBucket(
-      APPWRITE_BUCKET_ID,
-      'User Files',
-      [
-        // No bucket-level permissions — we use file-level permissions
-      ],
-      true, // fileSecurity enabled — allows per-file permissions
-      undefined, // enabled
-      10 * 1024 * 1024, // 10MB max file size
-      ['image/jpeg', 'image/png', 'application/pdf', 'text/plain',
-       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-    );
-    console.log('  ✓ Storage bucket created');
+    await storage.getBucket(APPWRITE_BUCKET_ID);
+    console.log('  ⓘ Storage bucket already exists');
   } catch (err) {
-    if (err.code === 409) {
-      console.log('  ⓘ Storage bucket already exists');
+    if (err.code === 404 || err.code === 403) {
+      try {
+        await storage.createBucket(
+          APPWRITE_BUCKET_ID,
+          'User Files',
+          [
+            // No bucket-level permissions — we use file-level permissions
+          ],
+          true, // fileSecurity enabled — allows per-file permissions
+          undefined, // enabled
+          10 * 1024 * 1024, // 10MB max file size
+          ['jpg', 'jpeg', 'png', 'pdf', 'txt', 'docx']
+        );
+        console.log('  ✓ Storage bucket created');
+      } catch (createErr) {
+        if (createErr.code === 409) {
+          console.log('  ⓘ Storage bucket already exists');
+        } else {
+          throw createErr;
+        }
+      }
     } else {
       throw err;
     }
